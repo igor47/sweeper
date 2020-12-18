@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
+from dataclasses import dataclass
 import pendulum
+import random
 import time
-from typing import List, Optional
+from typing import List, Dict, Optional, Tuple, Set, Union
 
 from curtsies import FullscreenWindow, Input, fsarray, FSArray, fmtstr, FmtStr
 from curtsies import fmtfuncs as ff
@@ -13,13 +15,28 @@ import curtsies.events
 
 class Field:
   """represents the mine field we're solving"""
+  CHAR_MAP: Dict[str, str] = {
+    'm': '💣',
+    'f': '🏳 ',
+    'c': '□ '
+  }
+
   def __init__(self):
     self.width = 10
     self.height = 10
+    self.mine_count = 10
 
-    self.pos = (5, 5)
+    # game clock tracking
     self.started: Optional[pendulum.DateTime] = None
     self.stoppage_time: pendulum.Duration = pendulum.duration()
+
+    # initialize cursor position
+    self.chars: FSArray = fsarray([])
+    self.row, self.col = 5, 5
+    self.mines: Set[Tuple[int, int]] = self.init_mines()
+    self.flags: Set[Tuple[int, int]] = set()
+    self.opened: Set[Tuple[int, int]] = set()
+    self.render()
 
   @property
   def game_time(self) -> pendulum.Duration:
@@ -38,10 +55,109 @@ class Field:
 
     return ff.plain(clock)
 
-  def clear(self) -> None:
+  def init_mines(self) -> Set[Tuple[int, int]]:
+    """Add mines to spaces"""
+    mines: Set[Tuple[int, int]] = set()
+    while len(mines) < self.mine_count:
+      mine = (random.randint(0, self.height - 1), random.randint(0, self.width - 1))
+      mines.add(mine)
+
+    return mines
+
+  def neighbors(self, pos: Tuple[int, int]) -> Set[Tuple[int, int]]:
+    """returns all neighbors of given position"""
+    neighbors = set()
+    for rdiff in range(-1, 2):
+      for cdiff in range(-1, 2):
+        neighbor = (pos[0] + rdiff, pos[1] + cdiff)
+        if neighbor == pos:
+          continue
+        if neighbor[0] < 0 or neighbor[0] >= self.height:
+          continue
+        if neighbor[1] < 0 or neighbor[1] >= self.width:
+          continue
+
+        neighbors.add(neighbor)
+
+    return neighbors
+
+  def neighbor_mines(self, pos: Tuple[int, int]) -> int:
+    """number of neighbor mines at given position"""
+    return len(self.neighbors(pos) & self.mines)
+
+  def symbol_at(self, pos: Tuple[int, int]) -> Union[str, int]:
+    """Returns symbol at given position"""
+    if pos in self.opened:
+      if pos in self.mines:
+        return 'm'
+      else:
+        return self.neighbor_mines(pos)
+    elif pos in self.flags:
+      return 'f'
+    else:
+      return 'c'
+
+  def char_at(self, pos: Tuple[int, int]) -> FmtStr:
+    """returns formatted character at position"""
+    sym = self.symbol_at(pos)
+    char = f"{sym} " if isinstance(sym, int) else self.CHAR_MAP.get(sym)
+
+    kwargs = {}
+    if pos[0] == self.row and pos[1] == self.col:
+      kwargs['bg'] = 'blue'
+
+    return fmtstr(char, **kwargs)
+
+  def render(self) -> None:
+    """representation of the field state"""
+    rows = []
+    for row in range(self.height):
+      row_str = self.char_at((row, 0))
+      for col in range(1, self.width):
+        row_str = row_str.append(self.char_at((row, col)))
+
+      rows.append(row_str)
+
+    self.chars = fsarray(rows)
+
+  def move(self, row: int, col: int) -> None:
+    """move the position"""
+    if row == 0 and col == 0:
+      return
+    if abs(row) + abs(col) > 1:
+      raise ValueError("can only move the cursor by one spot")
+
+    self.row = self.row + row if 0 <= self.row + row < self.height else self.row
+    self.col = self.col + col if 0 <= self.col + col < self.height else self.col
+
+    self.render()
+
+  def open_at(self, pos: Tuple[int, int]) -> None:
+    """actually opens at specified position"""
+    self.opened.add(pos)
+    if self.symbol_at(pos) == 0:
+      neighbors = self.neighbors(pos)
+      still_closed = neighbors - self.opened
+      for neighbor in still_closed:
+        self.open_at(neighbor)
+
+  def open(self) -> None:
     """Opens mine, or adjecent squares, under cursor"""
     if not self.started:
       self.started = pendulum.now()
+
+    self.open_at((self.row, self.col))
+    self.render()
+
+  def flag(self) -> None:
+    """flag space at cursor"""
+    pos = (self.row, self.col)
+    if pos in self.flags:
+      self.flags.remove(pos)
+    else:
+      self.flags.add(pos)
+
+    self.render()
 
 class Tick(curtsies.events.ScheduledEvent):
   """An event that represents a tick of game time"""
@@ -174,7 +290,16 @@ class Game:
     self.draw_menu(ff.plain("Restart?"), items)
 
   def draw_field(self) -> None:
-    pass
+    """draws the minefield on the board"""
+    if not self.field:
+      return
+
+    field = self.field.chars
+    rows, cols = field.shape
+
+    min_row = int(self.max_rows/2 - rows/2)
+    min_col = int(self.max_cols/2 - cols/2)
+    self.chars[min_row:min_row+rows, min_col:min_col+cols] = field
 
   def clear_main(self) -> None:
     """Hides the game display"""
@@ -242,8 +367,17 @@ class Game:
 
     if self.field:
       if event == "<SPACE>":
-        self.field.clear()
-
+        self.field.open()
+      if event == "<UP>":
+        self.field.move(-1, 0)
+      if event == "<LEFT>":
+        self.field.move(0, -1)
+      if event == "<RIGHT>":
+        self.field.move(0, 1)
+      if event == "<DOWN>":
+        self.field.move(1, 0)
+      if event == "f":
+        self.field.flag()
 
   def play(self) -> None:
     """Main loop of the game"""
