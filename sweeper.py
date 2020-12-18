@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import pendulum
 import time
 from typing import List, Optional
 
@@ -12,7 +13,35 @@ import curtsies.events
 
 class Field:
   """represents the mine field we're solving"""
-  pass
+  def __init__(self):
+    self.width = 10
+    self.height = 10
+
+    self.pos = (5, 5)
+    self.started: Optional[pendulum.DateTime] = None
+    self.stoppage_time: pendulum.Duration = pendulum.duration()
+
+  @property
+  def game_time(self) -> pendulum.Duration:
+    """duration that the Field has been worked"""
+    if self.started:
+      return pendulum.now() - self.started - self.stoppage_time
+    else:
+      return pendulum.duration()
+
+  @property
+  def clock(self) -> FmtStr:
+    """game clock as a formatted string"""
+    clock = f"{self.game_time.minutes:02d}:{self.game_time.seconds:02d}"
+    if self.game_time.hours > 0:
+      clock = f"{self.game_time.hours:02d}:{clock}"
+
+    return ff.plain(clock)
+
+  def clear(self) -> None:
+    """Opens mine, or adjecent squares, under cursor"""
+    if not self.started:
+      self.started = pendulum.now()
 
 class Tick(curtsies.events.ScheduledEvent):
   """An event that represents a tick of game time"""
@@ -32,10 +61,12 @@ class Game:
     self.reactor = Input()
     self.schedule_tick = self.reactor.scheduled_event_trigger(Tick)
     self.schedule_tick(when=time.time())
+    self.last_event: Optional[str] = None
 
     # initialize game state
     self.field: Optional[Field] = None
     self.menu: Optional[str] = None
+    self.menu_opened_at: Optional[pendulum.DateTime] = None
 
     # initialize game display + add borders and header
     self.chars = FSArray(self.max_rows, self.max_cols)
@@ -65,7 +96,11 @@ class Game:
     """renders the header into our array"""
     title = fmtstr(" No-Guess Sweeper :", fg="blue", underline=True)
     self.chars[1, 1:1+title.width] = [title]
-    avail = self.max_cols - 2 - title.width
+
+    clock = ff.plain('┊ ') + ff.green(self.field.clock if self.field else "00:00")
+    self.chars[1, (self.max_cols - 1 - clock.width):(self.max_cols - 1)] = [clock]
+
+    avail = self.max_cols - 2 - title.width - clock.width
 
     instructions: List[FmtStr] = [
       ff.yellow(' h: ') + ff.gray("Help "),
@@ -80,7 +115,7 @@ class Game:
     per = int(avail / len(instructions))
     istr = FmtStr().join(i.ljust(per) for i in instructions)
 
-    self.chars[1, (self.max_cols - istr.width - 1):self.max_cols-1] = [istr]
+    self.chars[1, title.width:(title.width + istr.width)] = [istr]
 
   def draw_menu(self, title: FmtStr, items: List[FmtStr]) -> None:
     """Draws the menu of the specified items"""
@@ -114,10 +149,10 @@ class Game:
     items = [
       ('q', 'Quit Sweeper'),
       ('c', 'Close menu'),
+      ('n', 'New game'),
       ('←,↑,→,↓', 'Move Cursor'),
-      ('d', 'Detonate'),
-      ('f', 'Flag as mine'),
-      ('SPACE', 'Detonate unflagged'),
+      ('f', 'Flag/unflag'),
+      ('SPACE', 'Clear'),
     ]
 
     max_key = max(len(item[0]) for item in items)
@@ -127,6 +162,19 @@ class Game:
     ]
 
     self.draw_menu(ff.bold("Help"), lines)
+
+  def draw_confirm_new(self) -> None:
+    """Confirms we want to restart the game"""
+    items = [
+      ff.red("A game is already in-progress!"),
+      ff.plain("Press ") + fmtstr("n", fg="yellow", underline=True) + " again to start a new",
+      ff.plain("game, or ") + fmtstr("c", fg="yellow", underline=True) + " to cancel",
+    ]
+
+    self.draw_menu(ff.plain("Restart?"), items)
+
+  def draw_field(self) -> None:
+    pass
 
   def clear_main(self) -> None:
     """Hides the game display"""
@@ -141,34 +189,61 @@ class Game:
     menu = f"menu: {str(self.menu)}"
     self.chars[self.max_rows-2, 1:1+len(menu)] = [menu]
 
+    event = f"event: {str(self.last_event)}"
+    self.chars[self.max_rows-3, 1:1+len(event)] = [event]
+
   def update(self) -> None:
     """Updates display based on game state"""
+    self.clear_main()
+
     if self.menu:
+      if not self.menu_opened_at:
+        self.menu_opened_at = pendulum.now()
+
       self.clear_main()
       if self.menu == "help":
         self.draw_help()
+      elif self.menu == "confirm_new":
+        self.draw_confirm_new()
       else:
         self.draw_menu(ff.blue("test"), [])
 
     elif self.field:
-      self.draw_game_clock()
-      self.draw_field()
+      if self.menu_opened_at:
+        stoppage = pendulum.now() - self.menu_opened_at
+        self.menu_opened_at = None
+        self.field.stoppage_time += stoppage
 
-    else:
-      self.clear_main()
+      self.draw_header()
+      self.draw_field()
 
     self.draw_debug()
     self.window.render_to_terminal(self.chars)
 
   def process_event(self, event: Optional[str]) -> None:
     """process an input event"""
+    self.last_event = event
+
     if self.menu and event == "c":
       self.menu = None
 
     if event == "h":
       self.menu = "help"
-    elif event == "t":
+
+    if event == "t":
       self.menu = "test"
+
+    if event == "n":
+      if not self.field or self.menu == "confirm_new":
+        self.menu = None
+        self.field = Field()
+      else:
+        self.menu = "confirm_new"
+
+    if self.field:
+      if event == "<SPACE>":
+        self.field.clear()
+
 
   def play(self) -> None:
     """Main loop of the game"""

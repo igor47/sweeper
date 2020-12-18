@@ -8,6 +8,7 @@ license = "MIT"
 [tool.poetry.dependencies]
 python = "^3.8"
 curtsies = "^0.3.4"
+pendulum = "^2.1.2"
 
 [tool.poetry.dev-dependencies]
 
