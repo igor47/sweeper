@@ -34,8 +34,9 @@ class Field:
     self.chars: FSArray = fsarray([])
     self.row, self.col = 5, 5
     self.mines: Set[Tuple[int, int]] = self.init_mines()
-    self.flags: Set[Tuple[int, int]] = set()
+    self.flagged: Set[Tuple[int, int]] = set()
     self.opened: Set[Tuple[int, int]] = set()
+    self.highlighted: Set[Tuple[int, int]] = set()
     self.render()
 
   @property
@@ -92,7 +93,7 @@ class Field:
         return 'm'
       else:
         return self.neighbor_mines(pos)
-    elif pos in self.flags:
+    elif pos in self.flagged:
       return 'f'
     else:
       return 'c'
@@ -101,10 +102,14 @@ class Field:
     """returns formatted character at position"""
     sym = self.symbol_at(pos)
     char = f"{sym} " if isinstance(sym, int) else self.CHAR_MAP.get(sym)
+    if char == "0 ":
+      char = ". "
 
     kwargs = {}
     if pos[0] == self.row and pos[1] == self.col:
       kwargs['bg'] = 'blue'
+    if pos in self.highlighted:
+      kwargs['fg'] = 'red'
 
     return fmtstr(char, **kwargs)
 
@@ -119,6 +124,7 @@ class Field:
       rows.append(row_str)
 
     self.chars = fsarray(rows)
+    self.highlighted = set()
 
   def move(self, row: int, col: int) -> None:
     """move the position"""
@@ -141,21 +147,40 @@ class Field:
       for neighbor in still_closed:
         self.open_at(neighbor)
 
+  def clear_at(self, pos: Tuple[int, int]) -> None:
+    """on an open square, opens remaining unflagged squares or highlights"""
+    count = self.symbol_at(pos)
+    neighbors = self.neighbors(pos)
+
+    flagged = neighbors & self.flagged
+    unflagged = neighbors - self.flagged
+
+    if len(flagged) == count:
+      for neighbor in unflagged:
+        self.open_at(neighbor)
+    else:
+      self.highlighted = unflagged - self.opened
+
   def open(self) -> None:
     """Opens mine, or adjecent squares, under cursor"""
     if not self.started:
       self.started = pendulum.now()
 
-    self.open_at((self.row, self.col))
+    pos = (self.row, self.col)
+    if pos in self.opened:
+      self.clear_at(pos)
+    else:
+      self.open_at(pos)
+
     self.render()
 
   def flag(self) -> None:
     """flag space at cursor"""
     pos = (self.row, self.col)
-    if pos in self.flags:
-      self.flags.remove(pos)
+    if pos in self.flagged:
+      self.flagged.remove(pos)
     else:
-      self.flags.add(pos)
+      self.flagged.add(pos)
 
     self.render()
 
