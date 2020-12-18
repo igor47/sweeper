@@ -28,6 +28,7 @@ class Field:
 
     # game clock tracking
     self.started: Optional[pendulum.DateTime] = None
+    self.ended: Optional[pendulum.DateTime] = None
     self.stoppage_time: pendulum.Duration = pendulum.duration()
 
     # initialize cursor position
@@ -43,18 +44,23 @@ class Field:
   def game_time(self) -> pendulum.Duration:
     """duration that the Field has been worked"""
     if self.started:
-      return pendulum.now() - self.started - self.stoppage_time
+      end = self.ended if self.ended else pendulum.now()
+      return end - self.started - self.stoppage_time
     else:
       return pendulum.duration()
 
   @property
   def clock(self) -> FmtStr:
     """game clock as a formatted string"""
-    clock = f"{self.game_time.minutes:02d}:{self.game_time.seconds:02d}"
+    clock = f"{self.game_time.minutes:02d}:{(self.game_time.seconds % 60):02d}"
     if self.game_time.hours > 0:
       clock = f"{self.game_time.hours:02d}:{clock}"
 
     return ff.plain(clock)
+
+  def add_stoppage(self, stoppage: pendulum.Duration) -> None:
+    if self.started and not self.ended:
+      self.stoppage_time += stoppage
 
   def init_mines(self) -> Set[Tuple[int, int]]:
     """Add mines to spaces"""
@@ -183,6 +189,24 @@ class Field:
       self.flagged.add(pos)
 
     self.render()
+
+  @property
+  def lost(self) -> bool:
+    """True if we lost"""
+    lost = bool(self.mines & self.opened)
+    if lost and not self.ended:
+      self.ended = pendulum.now()
+
+    return lost
+
+  @property
+  def won(self) -> bool:
+    """true if we won"""
+    won = len(self.opened) + len(self.mines) == self.width * self.height
+    if won and not self.ended:
+      self.ended = pendulum.now()
+
+    return won
 
 class Tick(curtsies.events.ScheduledEvent):
   """An event that represents a tick of game time"""
@@ -314,6 +338,31 @@ class Game:
 
     self.draw_menu(ff.plain("Restart?"), items)
 
+  def draw_won(self) -> None:
+    """Confirms we want to restart the game"""
+    assert self.field is not None
+
+    items = [
+      ff.plain(f"Congratulations! You won in {self.field.game_time.in_words()}"),
+      ff.plain(f"Press ") + fmtstr("n", fg="yellow", underline=True) + " to start a new game,",
+      ff.plain("or ") + fmtstr("c", fg="yellow", underline=True) + " to savor your success.",
+
+    ]
+
+    self.draw_menu(ff.green("Victory!"), items)
+
+  def draw_lost(self) -> None:
+    """Confirms we want to restart the game"""
+    assert self.field is not None
+
+    items = [
+      ff.plain(f"Alas, you appear to have ") + fmtstr("exploded", fg="red", bold=True) + ".",
+      ff.plain(f"Press ") + fmtstr("n", fg="yellow", underline=True) + " to start a new game,",
+      ff.plain("or ") + fmtstr("c", fg="yellow", underline=True) + " to learn from failure.",
+    ]
+
+    self.draw_menu(ff.red("Defeat!"), items)
+
   def draw_field(self) -> None:
     """draws the minefield on the board"""
     if not self.field:
@@ -355,17 +404,25 @@ class Game:
         self.draw_help()
       elif self.menu == "confirm_new":
         self.draw_confirm_new()
+      elif self.menu == "won":
+        self.draw_won()
+      elif self.menu == "lost":
+        self.draw_lost()
       else:
         self.draw_menu(ff.blue("test"), [])
 
     elif self.field:
       if self.menu_opened_at:
-        stoppage = pendulum.now() - self.menu_opened_at
+        self.field.add_stoppage(pendulum.now() - self.menu_opened_at)
         self.menu_opened_at = None
-        self.field.stoppage_time += stoppage
 
       self.draw_header()
       self.draw_field()
+      if not self.field.ended:
+        if self.field.won:
+          self.menu = "won"
+        elif self.field.lost:
+          self.menu = "lost"
 
     self.draw_debug()
     self.window.render_to_terminal(self.chars)
@@ -384,7 +441,7 @@ class Game:
       self.menu = "test"
 
     if event == "n":
-      if not self.field or self.menu == "confirm_new":
+      if not self.field or self.field.ended or self.menu == "confirm_new":
         self.menu = None
         self.field = Field()
       else:
