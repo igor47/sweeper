@@ -49,3 +49,6 @@ If the number of neighboring cells that are flagged equals the value of the clue
 
 <img src="https://raw.github.com/igor47/sweeper/master/sweeper.png" />
 
+## TODO
+
+I wanted to implement a version of sweeper where you don't have to guess, but this turned out to be more complicated than I thought.
