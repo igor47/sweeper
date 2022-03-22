@@ -183,7 +183,9 @@ class Field:
   def flag(self) -> None:
     """flag space at cursor"""
     pos = (self.row, self.col)
-    if pos in self.flagged:
+    if pos in self.opened:
+      self.highlighted = {pos}
+    elif pos in self.flagged:
       self.flagged.remove(pos)
     else:
       self.flagged.add(pos)
