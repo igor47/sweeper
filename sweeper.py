@@ -21,10 +21,10 @@ class Field:
     'c': '□ '
   }
 
-  def __init__(self):
-    self.width = 10
-    self.height = 10
-    self.mine_count = 10
+  def __init__(self, width: int = 10, height: int = 10, mines: int = 10):
+    self.width = width
+    self.height = height
+    self.mine_count = mines
 
     # game clock tracking
     self.started: Optional[pendulum.DateTime] = None
@@ -214,7 +214,12 @@ class Tick(curtsies.events.ScheduledEvent):
 
 class Game:
   """represents the game board, where game state is displayed"""
-  SIZE = (10,10)
+
+  LEVELS: Dict[str, Dict[str, int]] = {
+    "beginner": {"width": 10, "height": 10, "mines": 10},
+    "intermediate": {"width": 16, "height": 16, "mines": 40},
+    "advanced": {"width": 16, "height": 30, "mines": 99},
+  }
 
   def __init__(self, window: FullscreenWindow):
     # save game window, plus window size info
@@ -232,6 +237,7 @@ class Game:
     self.field: Optional[Field] = None
     self.menu: Optional[str] = None
     self.menu_opened_at: Optional[pendulum.DateTime] = None
+    self.level = list(self.LEVELS.keys())[0]
 
     # initialize game display + add borders and header
     self.chars = FSArray(self.max_rows, self.max_cols)
@@ -272,6 +278,11 @@ class Game:
       ff.yellow(' q: ') + ff.gray("Quit "),
       ff.yellow(' n: ') + ff.gray("New "),
     ]
+
+    if self.menu:
+      instructions.append(
+        ff.yellow(' c: ') + ff.gray("Close ")
+      )
 
     # drop instructions until they fit on top line
     while sum(i.width for i in instructions) > avail:
@@ -314,6 +325,7 @@ class Game:
     items = [
       ('q', 'Quit Sweeper'),
       ('c', 'Close menu'),
+      ('l', 'Difficulty level'),
       ('n', 'New game'),
       ('←,↑,→,↓', 'Move Cursor'),
       ('f', 'Flag/unflag'),
@@ -327,6 +339,20 @@ class Game:
     ]
 
     self.draw_menu(ff.bold("Help"), lines)
+
+  def draw_level(self) -> None:
+    """brings up the level setting menu"""
+    self.state = "menu"
+
+    lines = []
+    for level in self.LEVELS.keys():
+      line = f"{level[0]} : {level}"
+      if level == self.level:
+        lines.append(ff.underline(ff.yellow(line)))
+      else:
+        lines.append(ff.gray(line))
+
+    self.draw_menu(ff.bold("Difficulty"), lines)
 
   def draw_confirm_new(self) -> None:
     """Confirms we want to restart the game"""
@@ -402,21 +428,20 @@ class Game:
       self.clear_main()
       if self.menu == "help":
         self.draw_help()
+      elif self.menu == "level":
+        self.draw_level()
       elif self.menu == "confirm_new":
         self.draw_confirm_new()
       elif self.menu == "won":
         self.draw_won()
       elif self.menu == "lost":
         self.draw_lost()
-      else:
-        self.draw_menu(ff.blue("test"), [])
 
     elif self.field:
       if self.menu_opened_at:
         self.field.add_stoppage(pendulum.now() - self.menu_opened_at)
         self.menu_opened_at = None
 
-      self.draw_header()
       self.draw_field()
       if not self.field.ended:
         if self.field.won:
@@ -424,6 +449,7 @@ class Game:
         elif self.field.lost:
           self.menu = "lost"
 
+    self.draw_header()
     self.draw_debug()
     self.window.render_to_terminal(self.chars)
 
@@ -431,19 +457,28 @@ class Game:
     """process an input event"""
     self.last_event = event
 
+    # clear open menu
     if self.menu and event == "c":
       self.menu = None
 
+    # pick a difficulty level
+    if self.menu == "level" and isinstance(event, str):
+      matching = [level for level in self.LEVELS.keys() if level.startswith(event)]
+      if matching:
+        self.level = matching.pop()
+
+    # open the help menu
     if event == "h":
       self.menu = "help"
 
-    if event == "t":
-      self.menu = "test"
+    # open the difficulty selector
+    if event == "l":
+      self.menu = "level"
 
     if event == "n":
       if not self.field or self.field.ended or self.menu == "confirm_new":
         self.menu = None
-        self.field = Field()
+        self.field = Field(**self.LEVELS[self.level])
       else:
         self.menu = "confirm_new"
 
