@@ -44,3 +44,8 @@ Hit `<SPACE>` to open the cell under the cursor.
 Hit `f` to flag a cell as a mine.
 Hitting `<SPACE>` on an already-opened clue cell will highlight adjacent cells.
 If the number of neighboring cells that are flagged equals the value of the clue, then all remaining unflagged cells will be opened.
+
+## Screenshot
+
+<img src="https://raw.github.com/igor47/sweeper/master/sweeper.png" />
+
