@@ -226,8 +226,12 @@ class Game:
   def __init__(self, window: FullscreenWindow):
     # save game window, plus window size info
     self.window = window
-    self.max_rows = window.height
-    self.max_cols = window.width
+
+    # initialize game state
+    self.field: Optional[Field] = None
+    self.menu: Optional[str] = None
+    self.menu_opened_at: Optional[pendulum.DateTime] = None
+    self.level = list(self.LEVELS.keys())[0]
 
     # initialize reactor system + schedule first tick
     self.reactor = Input()
@@ -235,11 +239,13 @@ class Game:
     self.schedule_tick(when=time.time())
     self.last_event: Optional[str] = None
 
-    # initialize game state
-    self.field: Optional[Field] = None
-    self.menu: Optional[str] = None
-    self.menu_opened_at: Optional[pendulum.DateTime] = None
-    self.level = list(self.LEVELS.keys())[0]
+    # draw the window
+    self.update_window()
+
+  def update_window(self) -> None:
+    """re-draw the window, possibly reacting to changing window size"""
+    self.max_rows = self.window.height
+    self.max_cols = self.window.width
 
     # initialize game display + add borders and header
     self.chars = FSArray(self.max_rows, self.max_cols)
@@ -421,7 +427,10 @@ class Game:
 
   def update(self) -> None:
     """Updates display based on game state"""
-    self.clear_main()
+    if (self.window.width, self.window.height) != (self.max_cols, self.max_rows):
+        self.update_window()
+    else:
+        self.clear_main()
 
     if self.menu:
       if not self.menu_opened_at:
