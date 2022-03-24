@@ -214,6 +214,10 @@ class Tick(curtsies.events.ScheduledEvent):
   """An event that represents a tick of game time"""
   pass
 
+class Update(curtsies.events.ScheduledEvent):
+  """An event that represents a request to update the screen soon"""
+  pass
+
 class Game:
   """represents the game board, where game state is displayed"""
 
@@ -235,8 +239,11 @@ class Game:
 
     # initialize reactor system + schedule first tick
     self.reactor = Input()
+
     self.schedule_tick = self.reactor.scheduled_event_trigger(Tick)
     self.schedule_tick(when=time.time())
+
+    self.schedule_update = self.reactor.scheduled_event_trigger(Update)
     self.last_event: Optional[str] = None
 
     # draw the window
@@ -517,9 +524,12 @@ class Game:
         if e == '<ESC>' or e == 'q':
           break
         elif isinstance(e, Tick):
-          self.schedule_tick(time.time() + 1/15)
+          self.schedule_tick(time.time() + 0.5)
+        elif isinstance(e, Update):
+          pass
         else:
           self.process_event(str(e))
+          self.schedule_update(time.time() + 0.1)
 
 def main() -> None:
   with FullscreenWindow() as window:
