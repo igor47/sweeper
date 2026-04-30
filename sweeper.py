@@ -24,8 +24,19 @@ class Field:
   """represents the mine field we're solving"""
   CHAR_MAP: Dict[str, str] = {
     'm': '💣',
-    'f': '🏳 ',
+    'f': '🚩',
     'c': '□ '
+  }
+
+  DIGIT_COLORS: Dict[int, str] = {
+    1: 'blue',
+    2: 'green',
+    3: 'red',
+    4: 'magenta',
+    5: 'yellow',
+    6: 'cyan',
+    7: 'white',
+    8: 'white',
   }
 
   def __init__(self, width: int = 10, height: int = 10, mines: int = 10):
@@ -123,6 +134,10 @@ class Field:
       kwargs['bg'] = 'blue'
     if pos in self.highlighted:
       kwargs['fg'] = 'red'
+    elif isinstance(sym, int) and sym in self.DIGIT_COLORS:
+      kwargs['fg'] = self.DIGIT_COLORS[sym]
+      if sym >= 8:
+        kwargs['bold'] = True
 
     return fmtstr(char, **kwargs)
 
