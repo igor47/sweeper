@@ -3,27 +3,18 @@
 This is a basic ncurses minesweeper game.
 It is written in Python, using the awesome [curtsies](https://github.com/bpython/curtsies) library for interacting with the terminal.
 
-## Installation
-
-This requires [poetry](https://python-poetry.org/) to install.
-If you don't have `poetry`:
-
-```bash
-$ pip install poetry
-```
-
-To install the game:
-
-```bash
-$ poetry install
-```
-
 ## Running
 
-Run with `poetry` like so:
+This is a single-file script that uses [PEP 723](https://peps.python.org/pep-0723/) inline metadata, so [`uv`](https://docs.astral.sh/uv/) handles everything — Python version, virtualenv, and dependencies — on first run.
 
 ```bash
-$ poetry run ./sweeper.py
+$ ./sweeper.py
+```
+
+Or, equivalently:
+
+```bash
+$ uv run sweeper.py
 ```
 
 ## Interface

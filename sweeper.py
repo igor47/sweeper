@@ -1,4 +1,11 @@
-#!/usr/bin/env python
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#   "curtsies>=0.4",
+#   "pendulum>=3.0",
+# ]
+# ///
 
 from dataclasses import dataclass
 import pendulum
